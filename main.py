@@ -1,6 +1,9 @@
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
+import plotly.io as pio
+import tempfile
+import os
 
 from pandas import DataFrame
 from plotly.subplots import make_subplots
@@ -196,10 +199,16 @@ def get_all_start_control(school_data):
 
 
 def get_one_subject_data(school_data, subject: str):
+    ''''
+    Получение данных из массива по одному из предметов.
+    '''
     return school_data[subject]
 
 
 def get_one_class_data(school_data, st_control: bool, klass: str):
+    ''''
+    Получение данных из массива по одному из классов. Учитывается является ли работа стартовой аргументом st_control
+    '''
     data = []
     for i in school_data:
         if i["Стартовый контроль"] is st_control:
@@ -213,6 +222,10 @@ def get_one_class_data(school_data, st_control: bool, klass: str):
 
 
 def get_all_acap_acaq_at_klass(school_data, klass, st_control):
+    ''''
+    Получение общей академической успеваемости и качества обучения в классе.
+    st_control указывает на какие работы стоит смотреть. st_control = true -> стартовые, st_control = false = входные
+    '''
     data = []
     for index, i in enumerate(school_data):
         acap = 0
@@ -251,9 +264,12 @@ def get_all_acap_acaq_at_klass(school_data, klass, st_control):
 
 
 def calculate_sizes(data, base_height=200, base_width=300):
+    ''''
+    Расчет размера для создания графиков
+    '''
     cols = 3
     rows = (len(data) + cols - 1) // cols
-    total_height = base_height * rows + 50  # +50 на отступы
+    total_height = base_height * rows + 50
     total_width = base_width * cols
     return total_height, total_width
 
@@ -270,8 +286,54 @@ else:
     st.subheader("Стартовые контрольные работы выполняли:")
     all_start = get_all_start_control(sub)
     with st.expander(""):
-        for i in all_start:
-            st.subheader(f"Предмет {i} -> {' '.join(all_start[i])}")
+        display_option = st.radio(
+            "Способ отображения:",
+            ["По предметам (предметы в строках)", "По классам (классы в строках)"],
+            horizontal=True
+        )
+        if display_option == "По предметам (предметы в строках)":
+            st.subheader("Предметы и соответствующие классы")
+
+            rows = []
+            for subject, classes in all_start.items():
+                unique_classes = sorted(set(classes))
+                rows.append({
+                    "Предмет": subject,
+                    "Классы": ", ".join(unique_classes),
+                    "Количество классов": len(unique_classes)
+                })
+
+            df_subjects = pd.DataFrame(rows)
+            st.dataframe(df_subjects, use_container_width=True, hide_index=True)
+
+        elif display_option == "По классам (классы в строках)":
+            st.subheader("Классы и преподаваемые в них предметы")
+
+
+            all_classes = set()
+            for classes in all_start.values():
+                all_classes.update(classes)
+            sorted_classes = sorted(all_classes, key=lambda x: (
+                int(x[:-1]) if x[:-1].isdigit() else 999,
+                x[-1] if len(x) > 1 else ''
+            ))
+
+            rows = []
+            for class_name in sorted_classes:
+                subjects_for_class = []
+                for subject, classes in all_start.items():
+                    if class_name in classes:
+                        subjects_for_class.append(subject)
+
+                if subjects_for_class:
+                    rows.append({
+                        "Класс": class_name,
+                        "Предметы": ", ".join(subjects_for_class),
+                        "Количество предметов": len(subjects_for_class)
+                    })
+
+            df_classes = pd.DataFrame(rows)
+            st.dataframe(df_classes, use_container_width=True, hide_index=True)
     st.subheader("Общий анализ результатов по классам и предметам")
     with st.expander("Стартовый контроль"):
         with st.expander("Стартовые работы 5 класс"):
@@ -289,7 +351,7 @@ else:
                 cols=cols,
                 subplot_titles="",
                 horizontal_spacing=0.05,
-                vertical_spacing=0.02
+                vertical_spacing=0.1
             )
 
             for i, group in enumerate(data):
@@ -327,6 +389,28 @@ else:
 
             config = {'scrollZoom': False, 'displayModeBar': False}
             st.plotly_chart(fig, config=config, width=width, height=height)
+            if st.button("Скачать график как изображение", key="download_5_class"):
+                export_width = 1200
+                export_height = 800
+
+                fig_temp = fig.update_layout(
+                    template="plotly",
+                    paper_bgcolor="white",
+                    plot_bgcolor="white",
+                    width=export_width,
+                    height=export_height
+                )
+                with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
+                    fig_temp.write_html(tmp.name)
+                    img_bytes = pio.to_image(fig_temp, format='png', engine='kaleido')
+
+                st.download_button(
+                    key="png_5_class",
+                    label="Скачать PNG",
+                    data=img_bytes,
+                    file_name="График.png",
+                    mime="image/png"
+                )
 
         data = 0
         with st.expander("Стартовые работы 6-8 классов"):
@@ -345,7 +429,7 @@ else:
                 cols=cols,
                 subplot_titles="",
                 horizontal_spacing=0.05,
-                vertical_spacing=0.02
+                vertical_spacing=0.1
             )
 
             for i, group in enumerate(data):
@@ -383,6 +467,29 @@ else:
 
             config = {'scrollZoom': False, 'displayModeBar': False}
             st.plotly_chart(fig, config=config, width=width, height=height)
+
+            if st.button("Скачать график как изображение", key="download_6_8_classes"):
+                export_width = 1200
+                export_height = 800
+
+                fig_temp = fig.update_layout(
+                    template="plotly",
+                    paper_bgcolor="white",
+                    plot_bgcolor="white",
+                    width=export_width,
+                    height=export_height
+                )
+                with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
+                    fig_temp.write_html(tmp.name)
+                    img_bytes = pio.to_image(fig_temp, format='png', engine='kaleido')
+
+                st.download_button(
+                    key="png_6_8_classes",
+                    label="Скачать PNG",
+                    data=img_bytes,
+                    file_name="График.png",
+                    mime="image/png"
+                )
         with st.expander("Стартовый контроль - 10 класс"):
             st.subheader("Стартовый контроль - 10 класс")
             data = get_all_acap_acaq_at_klass(sub, "10", True)
@@ -398,7 +505,7 @@ else:
                 cols=cols,
                 subplot_titles="",
                 horizontal_spacing=0.05,
-                vertical_spacing=0.03
+                vertical_spacing=0.1
             )
 
             for i, group in enumerate(data):
@@ -432,11 +539,33 @@ else:
                 ticktext=['Общая усп.', 'Качество'],
                 row=row, col=col
             )
-
             fig.update_yaxes(automargin=False, ticklen=5, anchor="free")
 
             config = {'scrollZoom': True, 'displayModeBar': False}
             st.plotly_chart(fig, config=config, width=width, height=height)
+            if st.button("Скачать график как изображение", key="download_10_class"):
+                export_width = 1200
+                export_height = 800
+
+                fig_temp = fig.update_layout(
+                    template="plotly",
+                    paper_bgcolor="white",
+                    plot_bgcolor="white",
+                    width=export_width,
+                    height=export_height
+                )
+                with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
+                    fig_temp.write_html(tmp.name)
+                    img_bytes = pio.to_image(fig_temp, format='png', engine='kaleido')
+
+                st.download_button(
+                    key="png_10_class",
+                    label="Скачать PNG",
+                    data=img_bytes,
+                    file_name="График.png",
+                    mime="image/png"
+                )
+
     with st.expander("Входные контрольные работы"):
         with st.expander("6 Класс"):
             data = get_all_acap_acaq_at_klass(sub, "6", False)
@@ -451,7 +580,7 @@ else:
                 cols=cols,
                 subplot_titles="",
                 horizontal_spacing=0.05,
-                vertical_spacing=0.03
+                vertical_spacing=0.1
             )
 
             for i, group in enumerate(data):
@@ -490,6 +619,28 @@ else:
 
             config = {'scrollZoom': True, 'displayModeBar': False}
             st.plotly_chart(fig, config=config, width=width, height=height)
+            if st.button("Скачать график как изображение", key="download_6_class_input"):
+                export_width = 1200
+                export_height = 800
+
+                fig_temp = fig.update_layout(
+                    template="plotly",
+                    paper_bgcolor="white",
+                    plot_bgcolor="white",
+                    width=export_width,
+                    height=export_height
+                )
+                with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
+                    fig_temp.write_html(tmp.name)
+                    img_bytes = pio.to_image(fig_temp, format='png', engine='kaleido')
+
+                st.download_button(
+                    key="png_6_class_input",
+                    label="Скачать PNG",
+                    data=img_bytes,
+                    file_name="График.png",
+                    mime="image/png"
+                )
         with st.expander("7 Класс"):
             data = get_all_acap_acaq_at_klass(sub, "7", False)
             data = [item for item in data if item['values']]
@@ -503,7 +654,7 @@ else:
                 cols=cols,
                 subplot_titles="",
                 horizontal_spacing=0.05,
-                vertical_spacing=0.03
+                vertical_spacing=0.1
             )
 
             for i, group in enumerate(data):
@@ -542,6 +693,28 @@ else:
 
             config = {'scrollZoom': True, 'displayModeBar': False}
             st.plotly_chart(fig, config=config, width=width, height=height)
+            if st.button("Скачать график как изображение", key="download_7_class_input"):
+                export_width = 1200
+                export_height = 800
+
+                fig_temp = fig.update_layout(
+                    template="plotly",
+                    paper_bgcolor="white",
+                    plot_bgcolor="white",
+                    width=export_width,
+                    height=export_height
+                )
+                with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
+                    fig_temp.write_html(tmp.name)
+                    img_bytes = pio.to_image(fig_temp, format='png', engine='kaleido')
+
+                st.download_button(
+                    key="png_7_class_input",
+                    label="Скачать PNG",
+                    data=img_bytes,
+                    file_name="График.png",
+                    mime="image/png"
+                )
         with st.expander("8 Класс"):
             data = get_all_acap_acaq_at_klass(sub, "8", False)
             data = [item for item in data if item['values']]
@@ -555,7 +728,7 @@ else:
                 cols=cols,
                 subplot_titles="",
                 horizontal_spacing=0.05,
-                vertical_spacing=0.03
+                vertical_spacing=0.1
             )
 
             for i, group in enumerate(data):
@@ -594,6 +767,28 @@ else:
 
             config = {'scrollZoom': True, 'displayModeBar': False}
             st.plotly_chart(fig, config=config, width=width, height=height)
+            if st.button("Скачать график как изображение", key="download_8_class_input"):
+                export_width = 1200
+                export_height = 800
+
+                fig_temp = fig.update_layout(
+                    template="plotly",
+                    paper_bgcolor="white",
+                    plot_bgcolor="white",
+                    width=export_width,
+                    height=export_height
+                )
+                with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
+                    fig_temp.write_html(tmp.name)
+                    img_bytes = pio.to_image(fig_temp, format='png', engine='kaleido')
+
+                st.download_button(
+                    key="png_8_class_input",
+                    label="Скачать PNG",
+                    data=img_bytes,
+                    file_name="График.png",
+                    mime="image/png"
+                )
         with st.expander("9 Класс"):
             data = get_all_acap_acaq_at_klass(sub, "9", False)
             data = [item for item in data if item['values']]
@@ -607,7 +802,7 @@ else:
                 cols=cols,
                 subplot_titles="",
                 horizontal_spacing=0.05,
-                vertical_spacing=0.03
+                vertical_spacing=0.1
             )
 
             for i, group in enumerate(data):
@@ -646,6 +841,28 @@ else:
 
             config = {'scrollZoom': True, 'displayModeBar': False}
             st.plotly_chart(fig, config=config, width=width, height=height)
+            if st.button("Скачать график как изображение", key="download_9_class_input"):
+                export_width = 1200
+                export_height = 800
+
+                fig_temp = fig.update_layout(
+                    template="plotly",
+                    paper_bgcolor="white",
+                    plot_bgcolor="white",
+                    width=export_width,
+                    height=export_height
+                )
+                with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
+                    fig_temp.write_html(tmp.name)
+                    img_bytes = pio.to_image(fig_temp, format='png', engine='kaleido')
+
+                st.download_button(
+                    key="png_9_class_input",
+                    label="Скачать PNG",
+                    data=img_bytes,
+                    file_name="График.png",
+                    mime="image/png"
+                )
         with st.expander("11 Класс"):
             data = get_all_acap_acaq_at_klass(sub, "11", False)
             data = [item for item in data if item['values']]
@@ -659,7 +876,7 @@ else:
                 cols=cols,
                 subplot_titles="",
                 horizontal_spacing=0.05,
-                vertical_spacing=0.03
+                vertical_spacing=0.1
             )
 
             for i, group in enumerate(data):
@@ -698,8 +915,44 @@ else:
 
             config = {'scrollZoom': True, 'displayModeBar': False}
             st.plotly_chart(fig, config=config, width=width, height=height)
+            if st.button("Скачать график как изображение", key="download_11_class_input"):
+                export_width = 1200
+                export_height = 800
+
+                fig_temp = fig.update_layout(
+                    template="plotly",
+                    paper_bgcolor="white",
+                    plot_bgcolor="white",
+                    width=export_width,
+                    height=export_height
+                )
+                with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
+                    fig_temp.write_html(tmp.name)
+                    img_bytes = pio.to_image(fig_temp, format='png', engine='kaleido')
+
+                st.download_button(
+                    key="png_11_class_input",
+                    label="Скачать PNG",
+                    data=img_bytes,
+                    file_name="График.png",
+                    mime="image/png"
+                )
     st.subheader("Не были сданы работы")
     with st.expander(""):
-        for i in not_passed_w:
-            st.write(i)
-    print(sub)
+        df = pd.DataFrame(not_passed_w)
+        df_clean = df.drop_duplicates()
+        grouping_option = st.radio(
+            "Группировать по:",
+            ["По классу", "По преподавателю"],
+            horizontal=True
+        )
+        if grouping_option == "По классу":
+            st.subheader("Группировка по классам")
+            sorted_df = df_clean.sort_values("КЛАСС")
+            st.dataframe(sorted_df, use_container_width=True, hide_index=True)
+        elif grouping_option == "По преподавателю":
+            st.subheader("Группировка по преподавателям")
+            grouped = df_clean.groupby("Преподаватель")["КЛАСС"].apply(
+                lambda x: ", ".join(sorted(set(x)))).reset_index()
+            grouped.columns = ["Преподаватель", "КЛАССЫ"]
+            st.dataframe(grouped, use_container_width=True, hide_index=True)
