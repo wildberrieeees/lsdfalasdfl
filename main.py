@@ -3,7 +3,6 @@ import streamlit as st
 import plotly.graph_objects as go
 import plotly.io as pio
 import tempfile
-import os
 
 from pandas import DataFrame
 from plotly.subplots import make_subplots
